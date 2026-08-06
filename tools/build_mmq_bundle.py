@@ -10,6 +10,8 @@ import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+import _rocm_sdk_devel
+
 from mmq_bundle_wrapper_source import (
     DenseBackwardConfig,
     ForwardConfig,
@@ -23,12 +25,14 @@ from mmq_bundle_wrapper_source import (
 
 ROOT = Path(__file__).resolve().parents[1]
 CSRC = ROOT / "csrc"
-PACKAGE_DIR = ROOT / "torch_ggml_ops" / "kernels" / "gfx1151"
+PACKAGE_DIR = ROOT / "torch_ggml_ops" / "kernels" / "gfx1150"
 GENERATED_HEADER = CSRC / "generated" / "mmq_bundle_table.cuh"
-GENERATED_SOURCE_DIR = ROOT / "build" / "mmq_bundle_sources" / "gfx1151"
+GENERATED_SOURCE_DIR = ROOT / "build" / "mmq_bundle_sources" / "gfx1150"
 BUILD_INPUT_STAMP = ".mmq-build-input"
-ARCH = "gfx1151"
-ABI_PREFIX = "torch_ggml_ops_mmq_gfx1151_v1_"
+ARCH = "gfx1150"
+ABI_PREFIX = "torch_ggml_ops_mmq_gfx1150_v1_"
+DEVEL_ROOT = Path(_rocm_sdk_devel.__path__[0])
+IS_WINDOWS = os.name == 'nt'
 
 QUANT_TYPES = tuple((quant_type.name, quant_type) for quant_type in QuantType)
 BACKWARD_QUANT_TYPES = tuple(
@@ -948,9 +952,11 @@ def kernel_specs() -> tuple[KernelSpec, ...]:
 def _find_tool(hipcc: Path, name: str) -> Path:
     candidates = (
         hipcc.with_name(name),
-        hipcc.parent.parent / "lib" / "llvm" / "bin" / name,
+        DEVEL_ROOT / "lib" / "llvm" / "bin" / name,
     )
     for candidate in candidates:
+        if IS_WINDOWS:
+            candidate = candidate.with_suffix(".exe")
         if candidate.is_file():
             return candidate
     found = shutil.which(name)
@@ -1141,7 +1147,7 @@ def _compile_all(
 ) -> tuple[Path, list[bytes]]:
     readelf = _find_tool(hipcc, "llvm-readelf")
     PACKAGE_DIR.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix=".mmq-gfx1151-", dir=PACKAGE_DIR.parent))
+    staging = Path(tempfile.mkdtemp(prefix=".mmq-gfx1150-", dir=PACKAGE_DIR.parent))
     env = os.environ.copy()
     env.update({"LC_ALL": "C", "LANG": "C", "SOURCE_DATE_EPOCH": "0"})
     if ccache is not None:
@@ -1223,10 +1229,9 @@ def main() -> None:
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be positive")
+    
 
-    hipcc_value = args.hipcc or (
-        Path(shutil.which("hipcc")) if shutil.which("hipcc") else None
-    )
+    hipcc_value = args.hipcc or (DEVEL_ROOT / "bin" / "hipcc.exe")
     if hipcc_value is None or not hipcc_value.is_file():
         raise FileNotFoundError("hipcc is required to build the MMQ bundle")
     hipcc = hipcc_value.resolve()
@@ -1236,15 +1241,15 @@ def main() -> None:
 
     if args.check:
         if not _bundle_is_current(build_input, specs):
-            raise SystemExit("MMQ gfx1151 bundle is stale")
-        print(f"MMQ gfx1151 bundle is current ({len(specs)} kernels)")
+            raise SystemExit("MMQ gfx1150 bundle is stale")
+        print(f"MMQ gfx1150 bundle is current ({len(specs)} kernels)")
         return
     if (
         not args.force
         and not args.verify_reproducible
         and _bundle_is_current(build_input, specs)
     ):
-        print(f"MMQ gfx1151 bundle is current ({len(specs)} kernels)")
+        print(f"MMQ gfx1150 bundle is current ({len(specs)} kernels)")
         return
 
     disable_ccache = args.no_ccache or os.environ.get(

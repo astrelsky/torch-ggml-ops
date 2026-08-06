@@ -2,7 +2,11 @@
 
 #include "generated/mmq_bundle_table.cuh"
 
+#ifdef _WIN32
+#include <Windows.h>
+#else
 #include <dlfcn.h>
+#endif
 #include <hip/hip_runtime_api.h>
 
 #include <array>
@@ -68,7 +72,7 @@ std::mutex loaded_kernels_mutex;
 std::map<std::pair<int, MMQKernelId>, std::unique_ptr<LoadedKernel>> loaded_kernels;
 
 [[noreturn]] void fail(const std::string & message) {
-    throw std::runtime_error("MMQ gfx1151 bundle: " + message);
+    throw std::runtime_error("MMQ gfx1150 bundle: " + message);
 }
 
 void check_hip(hipError_t status, const std::string & operation) {
@@ -79,14 +83,38 @@ void check_hip(hipError_t status, const std::string & operation) {
 
 void bundle_path_anchor() {}
 
+#ifdef _WIN32
+std::filesystem::path bundle_directory() {
+    HMODULE hModule = NULL;
+    
+    // 1. Get the handle of the DLL containing the anchor symbol
+    if (!GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCWSTR>(&bundle_path_anchor), 
+            &hModule)) {
+        fail("GetModuleHandleExW could not locate the extension DLL");
+    }
+
+    // 2. Retrieve the absolute path of the DLL
+    wchar_t path[MAX_PATH];
+    DWORD size = GetModuleFileNameW(hModule, path, MAX_PATH);
+    if (size == 0 || size == MAX_PATH) {
+        fail("GetModuleFileNameW failed to retrieve the path");
+    }
+
+    // 3. Construct and return the target path
+    return std::filesystem::path(path).parent_path() / "kernels" / "gfx1150";
+}
+#else
 std::filesystem::path bundle_directory() {
     Dl_info info{};
     if (dladdr(reinterpret_cast<const void *>(&bundle_path_anchor), &info) == 0 ||
         info.dli_fname == nullptr) {
         fail("dladdr could not locate the extension shared object");
     }
-    return std::filesystem::path(info.dli_fname).parent_path() / "kernels" / "gfx1151";
+    return std::filesystem::path(info.dli_fname).parent_path() / "kernels" / "gfx1150";
 }
+#endif
 
 std::vector<std::uint8_t> read_artifact(const std::filesystem::path & path) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);

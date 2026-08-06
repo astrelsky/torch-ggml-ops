@@ -94,4 +94,4 @@ def assert_fused_pair_close(
     expected: torch.Tensor,
 ) -> None:
     assert_normalized_rmse(actual, expected, maximum=5e-5)
-    assert (actual.float() - expected.float()).abs().max().item() <= 2**-12
+    assert (actual.float() - expected.float()).abs().max().item() <= 2**-12, "%s <= %s" % (str((actual.float() - expected.float()).abs().max().item()), str(2**-12))
